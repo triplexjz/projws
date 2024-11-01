@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Weather Station Data</title>
+    <style>
+        /* Basic styling */
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f9;
+            color: #333;
+        }
+        h1 {
+            font-size: 2.5em;
+            color: #333;
+            margin-bottom: 80px;
+        }
+        .data-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+            width: 90%;
+            max-width: 500px;
+        }
+        .data {
+            font-size: 1.3em;
+            width: 100%;
+            padding: 15px;
+            border-radius: 8px;
+            background: #ffffff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .last-updated {
+            font-size: 1em;
+            color: #777;
+            margin-top: 15px;
+        }
+        .change-indicator {
+            font-size: 0.9em;
+            margin-left: 8px;
+        }
+        .location {
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            color: #333;
+        }
+        .increase { color: green; }
+        .decrease { color: red; }
+        .no-change { color: #777; }
+    </style>
+</head>
+<body>
+
+    <h1>Weather Station Data</h1>
+    
+    <div class="data-container">
+        <div class="location">
+            <span id="locationIcon">📍</span>
+            <span id="locationName">Location: Loading...</span>
+        </div>
+        <div class="data">
+            <span id="temperature">Temperature: Loading...</span>
+            <span class="change-indicator" id="tempChange">...</span>
+        </div>
+        <div class="data">
+            <span id="humidity">Humidity: Loading...</span>
+            <span class="change-indicator" id="humChange">...</span>
+        </div>
+        <div class="data">
+            <span id="pressure">Pressure: Loading...</span>
+            <span class="change-indicator" id="presChange">...</span>
+        </div>
+        <div class="data">
+            <span id="rainPrediction">Rain Prediction: Loading...</span>
+        </div>
+        <div class="last-updated" id="lastUpdated">Last Updated: Loading...</div>
+    </div>
+
+    <script>
+        const channelID = '2716460';
+        const readAPIKey = 'Q48HXD8QWM4S2EY7';
+        
+        let prevTemp, prevHumidity, prevPressure;
+
+        function formatTime(date) {
+            return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        function displayChange(element, value, prevValue) {
+            const changeElement = document.getElementById(element);
+            if (prevValue === undefined) {
+                changeElement.textContent = '...';
+                changeElement.className = 'change-indicator no-change';
+            } else {
+                const change = value - prevValue;
+                changeElement.textContent = change.toFixed(2) + (change > 0 ? ' ↑' : change < 0 ? ' ↓' : ' ↔');
+                changeElement.className = `change-indicator ${change > 0 ? 'increase' : change < 0 ? 'decrease' : 'no-change'}`;
+            }
+        }
+
+        async function fetchData() {
+            try {
+                const url = `https://api.thingspeak.com/channels/${channelID}/feeds.json?api_key=${readAPIKey}&results=1`;
+                const response = await fetch(url);
+                const data = await response.json();
+                const feed = data.feeds[0];
+
+                // Parse data and update fields
+                const temp = parseFloat(feed.field1).toFixed(2);
+                const hum = parseFloat(feed.field2).toFixed(2);
+                const pres = parseFloat(feed.field3).toFixed(2);
+
+                document.getElementById('temperature').textContent = `Temperature: ${temp} °C`;
+                document.getElementById('humidity').textContent = `Humidity: ${hum} %`;
+                document.getElementById('pressure').textContent = `Pressure: ${pres} hPa`;
+                document.getElementById('rainPrediction').textContent = `Rain Prediction: ${feed.field5 || 'Data not available'}`;
+
+                // Calculate and display changes
+                displayChange('tempChange', temp, prevTemp);
+                displayChange('humChange', hum, prevHumidity);
+                displayChange('presChange', pres, prevPressure);
+
+                // Update previous values
+                prevTemp = temp;
+                prevHumidity = hum;
+                prevPressure = pres;
+
+                // Update "Last Updated" time
+                const lastUpdated = new Date();
+                document.getElementById('lastUpdated').textContent = `Last Updated: ${formatTime(lastUpdated)}`;
+                
+            } catch (error) {
+                console.error("Failed to fetch data from ThingSpeak:", error);
+            }
+        }
+
+        setInterval(fetchData, 15000);
+        fetchData();
+    </script>
+</body>
+</html>
