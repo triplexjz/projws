@@ -14,12 +14,28 @@ LONGITUDE = '100.7728991'
 CSV_FILE = 'sensor_data_log.csv'
 model = None
 
-def get_sensor_data():  # Random data for testing
+def get_sensor_data():#Generate more realistic weather data based on historical averages.
+      
+    current_temperature = 28  # Example 
+    current_humidity = 75  # Example 
+    current_pressure = 1015  # Example 
+
+    # Introduce some realistic variation
+    temperature_variation = random.uniform(-5, 5)  # +/- 2 degrees
+    humidity_variation = random.uniform(-11, 11)  # +/- 5 percent
+    pressure_variation = random.uniform(-2, 2)  # +/- 1 hPa
+
+    temperature = current_temperature + temperature_variation
+    humidity = max(0, min(100, current_humidity + humidity_variation))  # Clamp between 0 and 100
+    pressure = current_pressure + pressure_variation
+
+    return temperature, humidity, pressure
+
+def get_sensor_dataR():  # Random data for testing
     temperature = random.uniform(20, 30)
     humidity = random.uniform(40, 100)
     pressure = random.uniform(980, 1020)
     return temperature, humidity, pressure
-
 def fetch_historical_data():
     end_time = int(time.time())
     start_time = end_time - (3 * 60 * 60)
@@ -110,25 +126,118 @@ def predict_rain_with_model(temperature, humidity, pressure):
         return "High chance of rain"
     else:
         return "Low chance of rain"
+def get_recent_readings(n=5):#Retrieve the last n readings from the CSV file.
+    
+    try:
+        data = pd.read_csv(CSV_FILE)
+        recent_readings = data.tail(n)  
+        return recent_readings
+    except (FileNotFoundError, ValueError):
+        print("No previous log data found.")
+        return None
+
+def analyze_trend(data, column):
+    
+    if data is not None and len(data) > 1:
+        
+        x = np.arange(len(data[column]))
+        y = data[column].values
+        slope = np.polyfit(x, y, 1)[0]  
+        return slope
+    return 0
+def rule_based_rain_prediction(temperature, humidity, pressure):
+    
+    score = 0
+    max_score = 100  # Define the maximum possible score
+
+    # Retrieve recent readings to analyze trends
+    recent_data = get_recent_readings()
+
+    # Rule 1: High Humidity check
+    if humidity > 85:
+        score += 50  # High chance of rain
+    elif humidity > 70:
+        score += 30  # Moderate chance of rain
+
+    # Rule 2: Analyze humidity trend
+    humidity_trend = analyze_trend(recent_data, 'humidity')
+    if humidity_trend < 0:  # Humidity is decreasing
+        score += 20  # Indicate potential rain due to humidity drop
+
+    # Rule 3: Temperature drop
+    last_logged_temp = get_last_logged_temp()
+    if last_logged_temp is not None and temperature < last_logged_temp:
+        score += 20  # High chance of rain due to temperature drop
+
+    # Rule 4: Pressure trend
+    last_logged_pressure = get_last_logged_pressure()
+    if last_logged_pressure is not None and pressure < last_logged_pressure:
+        score += 20  # High chance of rain due to pressure drop
+
+    # Analyze pressure trend
+    pressure_trend = analyze_trend(recent_data, 'pressure')
+    if pressure_trend < 0:  # Pressure is decreasing
+        score += 10  # Additional points for decreasing pressure
+
+    # Normalize score to percentage
+    percentage_chance = (score / max_score) * 100
+
+    return f"{percentage_chance:.2f}% chance of rain"
+
+
+
+def get_last_logged_humidity():
+    try:
+        
+        data = pd.read_csv(CSV_FILE)
+        last_humidity = data['humidity'].iloc[-1]  
+        return last_humidity
+    except (FileNotFoundError, IndexError):
+        print("No previous log data found.")
+        return None
+
+def get_last_logged_temp():
+    try:
+        
+        data = pd.read_csv(CSV_FILE)
+        last_temp = data['temperature'].iloc[-1]  
+        return last_temp
+    except (FileNotFoundError, IndexError):
+        print("No previous log data found.")
+        return None
+
+def get_last_logged_pressure():
+    try:
+        
+        data = pd.read_csv(CSV_FILE)
+        last_pressure = data['pressure'].iloc[-1]  
+        return last_pressure
+    except (FileNotFoundError, IndexError):
+        print("No previous log data found.")
+        return None
 
 if __name__ == "__main__":
-    train_model()  # Train model once when starting
-
-    while True:
-        temperature, humidity, pressure = get_sensor_data()
-        historical_data = fetch_historical_data()
+    print("press Ctrl+C to quit")
+    #train_model()  # Train model once when starting
+    try:
+        while True:
+            temperature, humidity, pressure = get_sensor_data()
+            historical_data = fetch_historical_data()
         
-        if historical_data[0] is not None:
-            last_temp = get_last_logged_temp()  # Fetch last logged temperature
+            if historical_data[0] is not None:
+                last_temp = get_last_logged_temp()  # Fetch last logged temperature
             
-            # Calculate the temperature change if we have a previous log
-            temp_change = temperature - last_temp if last_temp is not None else 0
-            
-            prediction = predict_rain_with_model(temperature, humidity, pressure)
-            log_sensor_data(temperature, humidity, pressure)  # Log new data
-            send_to_thingspeak(temperature, humidity, pressure, temp_change, prediction)
+                # Calculate the temperature change if we have a previous log
+                temp_change = temperature - last_temp if last_temp is not None else 0
+                
+                prediction = rule_based_rain_prediction(temperature, humidity, pressure)
+                #prediction = predict_rain_with_model(temperature, humidity, pressure)
+                log_sensor_data(temperature, humidity, pressure)  # Log new data
+                send_to_thingspeak(temperature, humidity, pressure, temp_change, prediction)
         
-        else:
-            print("Skipping prediction due to failed historical data fetch.")
+            else:
+                print("Skipping prediction due to failed historical data fetch.")
         
-        time.sleep(15)
+            time.sleep(15)
+    except KeyboardInterrupt:
+        print("\nServer is shutting down ")
